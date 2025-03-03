@@ -45,7 +45,7 @@ This project evaluates different **capacity planning strategies**:
 | Complex-neurological | 4.0            | 5.0               |
 | Other                | 3.8            | 5.2               |
 
-- ** Bed Occupancy **: Follow an **poisson distribution**.
+- **Bed Occupancy**: Follow an **poisson distribution**.
 - **Bed Allocation logic**:
   - Patients enter **acute stroke unit** first.
   - Then transfer to **rehab, ESD, or other destinations** based on probabilities.
