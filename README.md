@@ -1,1 +1,47 @@
 # HPDM097_GrpAsg
+## Stroke Capacity Planning Simulation
+
+### Table of Contents
+1. [Project Overview](#project-overview)
+2. [Simulation](#simulation)
+3. [Model Assumptions](#model-assumptions)
+
+---
+
+### Project Overview
+
+This project implements a **Discrete-Event Simulation (DES)** model for capacity planning in acute and community stroke services. It is based on the study:
+
+**Monks et al. (2016)** - "A modelling tool for capacity planning in acute and community stroke services"
+[Link](https://bmchealthservres.biomedcentral.com/articles/10.1186/s12913-016-1789-4#Tab3)
+
+The simulation models patient flow through an acute stroke unit, community rehabilitation, and early supported discharged (ESD). The goal is to assess **bed allocation**, **patient delays**, and **the impact of different capacity planning strategies** using **SimPy** in **Python**.
+
+---
+
+### Simulation
+
+This project evaluates different **capacity planning strategies**:
+- **Baseline Scenario**: Current acute and rehab bed capacity.
+- **Increased Demand**: Simulating a **5% rise in admissions**.
+- **Partial Bed Pooling**: Allowing some beds to be shared between acute and rehab patients.
+- **Ring-Fencing Beds**: Reserving stroke beds to reduce admission delays.
+- **Excluding Complex-Neurological Patients**: Evaluating impact on bed occupancy and patient flow.
+
+---
+
+### Model Assumptions
+
+- **Patient Arrivals**: Follow an **exponential distribution**.
+- **Length of Stay (LoS)**: Modeled using a **log-normal distribution**:
+  - Stroke (No ESD): Mean = 7.4 days, Std Dev = 8.6 days.
+  - Stroke (ESD): Mean = 4.6 days, Std Dev = 4.8 days.
+  - Stroke (Mortality): Mean = 7.0 days, Std Dev = 8.7 days.
+  - TIA: Mean = 1.8 days, Std Dev = 2.3 days.
+  - Complex-neurological: Mean = 4.0 days, Std Dev = 5.0 days.
+  - Other: Mean = 3.8 days, Std Dev = 5.2 days.
+- **Bed Allocation logic**:
+  - Patients enter **acute stroke unit** first.
+  - Then transfer to **rehab, ESD, or other destinations** based on probabilities.
+  - **Queueing rules apply** when no beds are available.
+
