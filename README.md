@@ -34,12 +34,16 @@ This project evaluates different **capacity planning strategies**:
 
 - **Patient Arrivals**: Follow an **exponential distribution**.
 - **Length of Stay (LoS)**: Modeled using a **log-normal distribution**:
-  - Stroke (No ESD): Mean = 7.4 days, Std Dev = 8.6 days.
-  - Stroke (ESD): Mean = 4.6 days, Std Dev = 4.8 days.
-  - Stroke (Mortality): Mean = 7.0 days, Std Dev = 8.7 days.
-  - TIA: Mean = 1.8 days, Std Dev = 2.3 days.
-  - Complex-neurological: Mean = 4.0 days, Std Dev = 5.0 days.
-  - Other: Mean = 3.8 days, Std Dev = 5.2 days.
+  
+| **Parameters**       | **Mean (days)**| **Std Dev (days)**|
+|---|---|---|
+| Strokes (No ESD)     | 7.4            | 8.6               |
+| Strokes (ESD)        | 4.6            | 4.8               |
+| Strokes (Mortality)  | 7.0            | 8.7               |
+| TIA                  | 1.8            | 2.3               |
+| Complex-neurological | 4.0            | 5.0               |
+| Other                | 3.8            | 5.2               |
+
 - **Bed Allocation logic**:
   - Patients enter **acute stroke unit** first.
   - Then transfer to **rehab, ESD, or other destinations** based on probabilities.
