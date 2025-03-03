@@ -5,6 +5,7 @@
 1. [Project Overview](#project-overview)
 2. [Simulation](#simulation)
 3. [Model Assumptions](#model-assumptions)
+4. [Contributors](#contributors)
 
 ---
 
@@ -49,3 +50,9 @@ This project evaluates different **capacity planning strategies**:
   - Then transfer to **rehab, ESD, or other destinations** based on probabilities.
   - **Queueing rules apply** when no beds are available.
 
+---
+
+### Contributors
+1. Neil Lenus (nl470@exeter.ac.uk)
+2. Emily Sims (es857@exeter.ac.uk)
+3. Tan Yi Siew (ut425@exeter.ac.uk)
