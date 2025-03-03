@@ -36,14 +36,14 @@ This project evaluates different **capacity planning strategies**:
 - **Patient Arrivals**: Follow an **exponential distribution**.
 - **Length of Stay (LoS)**: Modeled using a **log-normal distribution**:
   
-| **Parameters**       | **Mean (days)**| **Std Dev (days)**|
+| **Parameters**                  | **Mean (days)**| **Std Dev (days)**|
 |---|---|---|
-| Strokes (No ESD)     | 7.4            | 8.6               |
-| Strokes (ESD)        | 4.6            | 4.8               |
-| Strokes (Mortality)  | 7.0            | 8.7               |
-| TIA                  | 1.8            | 2.3               |
-| Complex-neurological | 4.0            | 5.0               |
-| Other                | 3.8            | 5.2               |
+| Strokes (No ESD)                | 7.4            | 8.6               |
+| Strokes (ESD)                   | 4.6            | 4.8               |
+| Strokes (Mortality)             | 7.0            | 8.7               |
+| Transient Ischaemic Attack (TIA)| 1.8            | 2.3               |
+| Complex-neurological            | 4.0            | 5.0               |
+| Other                           | 3.8            | 5.2               |
 
 - **Bed Occupancy**: Follow an **poisson distribution**.
 - **Bed Allocation logic**:
