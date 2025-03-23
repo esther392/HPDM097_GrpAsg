@@ -1,0 +1,204 @@
+import simpy
+import random
+import math
+from scipy.stats import lognorm
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Initialize simulation environment
+env = simpy.Environment()
+
+# Define total number of beds
+TOTAL_BEDS = 22
+# Create a single resource representing the pooled beds
+POOL_UNIT = simpy.Resource(env, capacity=TOTAL_BEDS)
+
+# Updated lognormal distribution parameters for ASU length of stay
+LOS_PARAMS = {
+    'Stroke-rehab': {'mu': 1.574, 'sigma': 0.924},
+    'Stroke-ESD': {'mu': 1.158, 'sigma': 0.858},
+    'Stroke-other': {'mu': 1.479, 'sigma': 0.966},
+    'TIA': {'mu': 0.104, 'sigma': 0.984},
+    'Complex Neurological': {'mu': 0.916, 'sigma': 0.970},
+    'Other': {'mu': 0.807, 'sigma': 1.027}
+}
+
+# Mean admission rates (days between arrivals) to the ASU
+ADMISSION_RATES_ASU = {
+    'Stroke': 1.2,
+    'TIA': 9.3,
+    'Complex Neurological': 3.6,
+    'Other': 3.2
+}
+
+# Mean admission rates to the RU
+ADMISSION_RATES_RU = {
+    'Stroke': 21.8,
+    'Complex Neurological': 31.7,
+    'Other': 28.6
+}
+
+# Discharge probabilities from ASU
+PATIENT_DISCHARGE_PROB = {
+    'Stroke': {
+        'rehab': 0.24,  # Stroke-rehab
+        'ESD': 0.13,  # Stroke-ESD
+        'other': 0.63  # Stroke-other
+    },
+    'TIA': {
+        'RU': 0.01,
+        'ESD': 0.01,
+        'Other': 0.98
+    },
+    'Complex Neurological': {
+        'RU': 0.11,
+        'ESD': 0.05,
+        'Other': 0.84
+    },
+    'Other': {
+        'RU': 0.05,
+        'ESD': 0.10,
+        'Other': 0.85
+    }
+}
+
+# RU discharge probabilities
+RU_DISCHARGE_PROB = {
+    'Stroke': {'ESD': 0.40, 'Other': 0.60},
+    'TIA': {'ESD': 0.00, 'Other': 1.00},
+    'Complex Neurological': {'ESD': 0.09, 'Other': 0.91},
+    'Other': {'ESD': 0.12, 'Other': 0.88}
+}
+
+# Updated lognormal distribution parameters for RU length of stay
+RU_LOS_PARAMS = {
+    'Stroke-Other': {'mu': 3.021, 'sigma': 0.807},
+    'Stroke-ESD': {'mu': 3.182, 'sigma': 0.677},
+    'Complex Neurological': {'mu': 2.957, 'sigma': 0.850},
+    'Other': {'mu': 2.494, 'sigma': 0.755},
+    'TIA': {'mu': 2.455, 'sigma': 0.973}
+}
+
+# Track occupancy data
+occupancy_data = {
+    'pool_daily': []
+}
+
+def get_los(patient_type, is_rehab):
+    """Generate lognormal length of stay based on patient type and is_rehab status"""
+    if is_rehab:
+        if patient_type in RU_LOS_PARAMS:
+            params = RU_LOS_PARAMS[patient_type]
+        else:
+            print(f"Warning: {patient_type} not found in RU_LOS_PARAMS. Using default RU parameters.")
+            params = RU_LOS_PARAMS['Other']  # Provide a default RU parameter
+    else:
+        if patient_type in LOS_PARAMS:
+            params = LOS_PARAMS[patient_type]
+        else:
+            print(f"Warning: {patient_type} not found in LOS_PARAMS. Using default ASU parameters.")
+            params = LOS_PARAMS['Other']  # Provide a default ASU parameter
+    return max(0.1, lognorm.rvs(s=params['sigma'], scale=math.exp(params['mu'])))
+
+def patient_process(env, patient_type, pool_unit, is_rehab=False):
+    """Simulates individual patient flow through the pooled unit"""
+
+    # Determine LOS type based on patient type and if it's a rehab patient
+    if patient_type == 'Stroke':
+        if is_rehab:
+            destination = random.choices(['ESD', 'Other'], weights=[0.40, 0.60], k=1)[0]
+            los_type = f'Stroke-{destination}'  # Use subtype for Stroke patients in RU
+        else:
+            #Here's the key change: Use keys from LOS_PARAMS, and lowercase the choices from random.choices
+            subtype = random.choices(
+                ['rehab', 'ESD', 'other'],  # Subtype options
+                weights=[0.24, 0.13, 0.63],  # Stroke subtype probabilities
+                k=1
+            )[0]
+            los_type = f'Stroke-{subtype}'  # Use subtype for Stroke patients in ASU
+    else:
+        los_type = patient_type  # Use generic patient type for others
+
+    # Get LOS based on los_type and if it's a rehab patient
+    los = get_los(los_type, is_rehab)
+
+    # Request a bed from the pooled unit
+    with pool_unit.request() as req:
+        yield req
+        yield env.timeout(los)
+
+def patient_generator_asu(env, patient_type, pool_unit):
+    """Generates patients for the ASU"""
+    while True:
+        # Exponential distribution for inter-arrival times
+        inter_arrival_time = random.expovariate(1 / ADMISSION_RATES_ASU[patient_type])
+        yield env.timeout(inter_arrival_time)
+        env.process(patient_process(env, patient_type, pool_unit, is_rehab=False))
+
+def patient_generator_ru(env, patient_type, pool_unit):
+    """Generates patients directly for the RU"""
+    if patient_type in ADMISSION_RATES_RU:
+        while True:
+            inter_arrival_time = random.expovariate(1 / ADMISSION_RATES_RU[patient_type])
+            yield env.timeout(inter_arrival_time)
+            env.process(patient_process(env, patient_type, pool_unit, is_rehab=True))
+
+def occupancy_monitor(env, pool_unit):
+    """Tracks daily occupancy levels"""
+    while True:
+        occupancy_data['pool_daily'].append(len(pool_unit.users))
+        yield env.timeout(1)
+
+# Setup monitoring and patient generators
+env.process(occupancy_monitor(env, POOL_UNIT))
+
+# Generators for ASU admissions
+for pt in ADMISSION_RATES_ASU:
+    env.process(patient_generator_asu(env, pt, POOL_UNIT))
+
+# Generators for direct RU admissions
+for pt in ADMISSION_RATES_RU:
+    env.process(patient_generator_ru(env, pt, POOL_UNIT))
+
+# Execute simulation
+env.run(until=8*365)  # 8 years total (3 warmup + 5 data collection)
+
+# Remove warmup period (first 3 years/1095 days)
+occupancy_data['pool_daily'] = occupancy_data['pool_daily'][3*365:]
+
+# Calculate statistics
+print(f"Pooled Unit Average Occupancy (5-year post-warmup): {sum(occupancy_data['pool_daily'])/len(occupancy_data['pool_daily']):.1f}")
+
+# Generate PDF bar chart for Pooled Unit occupancy
+pool_occupancy = occupancy_data['pool_daily']
+min_occupancy_pool = 1
+max_occupancy_pool = TOTAL_BEDS  # Define maximum occupancy for the plot
+
+# Use histogram counts, only looking at the defined range
+occupancy_counts_pool, _ = np.histogram(pool_occupancy, bins=np.arange(min_occupancy_pool, max_occupancy_pool + 1))
+
+# Calculate probabilities
+occupancy_probabilities_pool = occupancy_counts_pool / len(pool_occupancy)
+
+# x-axis values for the chart
+x_values_pool = np.arange(min_occupancy_pool, max_occupancy_pool)
+
+# Create the bar chart
+plt.figure(figsize=(12, 6))
+plt.bar(x_values_pool, occupancy_probabilities_pool * 100, color='black', width=0.7)
+
+# Customize the chart
+plt.xlabel('No. patients in pooled unit')
+plt.ylabel('% observations')
+plt.title('Pooled Unit Occupancy Probability Density Function')
+
+plt.xlim(min_occupancy_pool - 0.5, max_occupancy_pool - 0.5)
+plt.ylim(0, max(occupancy_probabilities_pool * 100) * 1.1)
+
+plt.xticks(np.arange(min_occupancy_pool, max_occupancy_pool, 1))  # Ensure all x-axis labels are integers
+plt.yticks(np.arange(0, int(max(occupancy_probabilities_pool * 100)) + 2, 2))
+
+plt.grid(axis='y', linestyle='-', alpha=0.5)
+
+# Display the plot
+plt.show()
