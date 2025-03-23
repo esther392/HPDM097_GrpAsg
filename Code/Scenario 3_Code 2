@@ -1,0 +1,138 @@
+import simpy
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Configuration for patient types and lognormal LOS parameters
+PATIENT_TYPES = {
+    "Stroke_No_ESD": {"mean": 7.4, "stdev": 8.6, "type": "acute"},
+    "Stroke_ESD": {"mean": 4.6, "stdev": 4.8, "type": "acute"},
+    "Stroke_Mortality": {"mean": 7.0, "stdev": 8.7, "type": "acute"},
+    "TIA": {"mean": 1.8, "stdev": 2.3, "type": "acute"},
+    "Complex_Neurological": {"mean": 4.0, "stdev": 5.0, "type": "acute"},
+    "Other": {"mean": 3.8, "stdev": 5.2, "type": "rehab"}
+}
+
+WARM_UP_DAYS = 365 * 3  # 3 years warm-up
+SIMULATION_DAYS = 365 * 5  # Total simulation length (5 years)
+RUN_LENGTH_DAYS = SIMULATION_DAYS - WARM_UP_DAYS  # Exclude warm-up period
+
+# Bed configuration
+TOTAL_BEDS = 26
+POOLED_BEDS = 10
+ACUTE_BEDS = 10
+REHAB_BEDS = 6
+
+# Global variables to track occupancy
+occupancy_history = {
+    "pooled": [],
+    "acute": [],
+    "rehab": []
+}
+current_occupancy = {
+    "pooled": 0,
+    "acute": 0,
+    "rehab": 0
+}
+
+def lognormal_los(mean, stdev):
+    """Generate a lognormal length of stay given mean and standard deviation."""
+    sigma = np.sqrt(np.log(1 + (stdev / mean) ** 2))
+    mu = np.log(mean) - (sigma ** 2) / 2
+    return np.random.lognormal(mu, sigma)
+
+def patient_generator(env):
+    """Generates patients with Poisson arrival times"""
+    while True:
+        patient_type = random.choice(list(PATIENT_TYPES.keys()))
+        los_params = PATIENT_TYPES[patient_type]
+        los = lognormal_los(los_params["mean"], los_params["stdev"])
+        
+        # Determine bed type and admit patient if possible
+        bed_type = los_params["type"]
+        if admit_patient(bed_type):
+            env.process(patient_stay(los, bed_type))
+        
+        interarrival = random.expovariate(1 / sum(1 / v["mean"] for v in PATIENT_TYPES.values()))
+        yield env.timeout(interarrival)
+
+def admit_patient(bed_type):
+    """Attempt to admit a patient to the appropriate bed type"""
+    if current_occupancy[bed_type] < get_bed_capacity(bed_type):
+        return True
+    elif current_occupancy["pooled"] < POOLED_BEDS:
+        return True
+    return False
+
+def get_bed_capacity(bed_type):
+    """Get the capacity for a specific bed type"""
+    if bed_type == "acute":
+        return ACUTE_BEDS
+    elif bed_type == "rehab":
+        return REHAB_BEDS
+    else:
+        return POOLED_BEDS
+
+def patient_stay(los, bed_type):
+    """Manages patient stay in the appropriate bed"""
+    global current_occupancy
+    if current_occupancy[bed_type] < get_bed_capacity(bed_type):
+        current_occupancy[bed_type] += 1
+        bed_used = bed_type
+    else:
+        current_occupancy["pooled"] += 1
+        bed_used = "pooled"
+    
+    yield env.timeout(los)
+    current_occupancy[bed_used] -= 1
+
+def occupancy_tracker(env):
+    """Records daily occupancy"""
+    while True:
+        for bed_type in current_occupancy:
+            occupancy_history[bed_type].append(current_occupancy[bed_type])
+        yield env.timeout(1)
+
+# Simulation setup
+env = simpy.Environment()
+env.process(patient_generator(env))
+env.process(occupancy_tracker(env))
+env.run(until=SIMULATION_DAYS)
+
+# Remove data from the warm-up period
+for bed_type in occupancy_history:
+    occupancy_history[bed_type] = occupancy_history[bed_type][WARM_UP_DAYS:]
+
+# Calculate total occupancy
+total_occupancy = [sum(occ) for occ in zip(*occupancy_history.values())]
+
+# Calculate PDF and CDF
+max_occ = max(total_occupancy)
+counts = np.bincount(total_occupancy, minlength=max_occ + 1)
+pdf = counts / len(total_occupancy)
+cdf = np.cumsum(pdf)
+
+# Calculate delay probabilities
+bed_range = np.arange(0, TOTAL_BEDS + 1)
+delay_probs = []
+
+for n in bed_range:
+    if n == 0:
+        delay_probs.append(1.0)  # Delay is certain with no beds
+    else:
+        # P(delay) = P(N ≥ n) = 1 - P(N < n)
+        delay_probs.append(1 - cdf[n - 1] if n <= len(cdf) else 0.0)
+
+# Create staggered plot
+plt.figure(figsize=(10, 6))
+plt.step(bed_range, delay_probs, where="post", linewidth=2, color="black")
+
+plt.title("Probability of Delay vs Number of Beds Available (Partial Pooling)", fontsize=14)
+plt.xlabel("No. of beds available", fontsize=12)
+plt.ylabel("Probability of delay", fontsize=12)
+plt.xticks(np.arange(0, TOTAL_BEDS + 1, step=2), fontsize=10)
+plt.yticks(np.arange(0, 1.1, step=0.1), fontsize=10)
+plt.grid(axis="both", linestyle="--", alpha=0.7)
+
+plt.tight_layout()
+plt.show()
