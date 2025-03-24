@@ -1,0 +1,158 @@
+import simpy
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import lognorm
+
+# Simulation parameters
+WARM_UP_DAYS = 365 * 3  # 3 years warm-up
+SIMULATION_DAYS = 365 * 8  # Total simulation length (5 years)
+RUN_LENGTH_DAYS = SIMULATION_DAYS - WARM_UP_DAYS  # Exclude warm-up period
+
+# Original parameters (mu/sigma)
+LOS_PARAMS = {
+    'Stroke-rehab': {'mu': 1.574, 'sigma': 0.924},
+    'Stroke-ESD': {'mu': 1.158, 'sigma': 0.858},
+    'Stroke-other': {'mu': 1.479, 'sigma': 0.966},
+    'TIA': {'mu': 0.104, 'sigma': 0.984},
+    'Complex Neurological': {'mu': 0.916, 'sigma': 0.970},
+    'Other': {'mu': 0.807, 'sigma': 1.027}
+}
+
+# Additional parameters (mean/stdev)
+PATIENT_TYPES = {
+    'Stroke-rehab': {'mean': 25, 'stdev': 10},
+    'Stroke-ESD': {'mean': 15, 'stdev': 7},
+    'Stroke-other': {'mean': 20, 'stdev': 8},
+    'TIA': {'mean': 5, 'stdev': 3},
+    'Complex Neurological': {'mean': 18, 'stdev': 9},
+    'Other': {'mean': 12, 'stdev': 6}
+}
+
+# Admission rates
+ADMISSION_RATES_ASU = {
+    'Stroke': 1.2,
+    'TIA': 9.3,
+    'Complex Neurological': 3.6,
+    'Other': 3.2
+}
+
+# Mapping admission types to LOS types
+ADMISSION_TO_LOS = {
+    'Stroke': ['Stroke-rehab', 'Stroke-ESD', 'Stroke-other'],
+    'TIA': ['TIA'],
+    'Complex Neurological': ['Complex Neurological'],
+    'Other': ['Other']
+}
+
+# Global variables
+current_occupancy = 0
+occupancy_history = []
+
+def calculate_lognormal_params(mean, stdev):
+    """Convert mean/stdev to lognormal parameters"""
+    sigma = np.sqrt(np.log(1 + (stdev/mean)**2))
+    mu = np.log(mean) - sigma**2/2
+    return mu, sigma
+
+def lognormal_los(params_type='mu_sigma', **params):
+    """Generate length of stay using either mu/sigma or mean/stdev"""
+    if params_type == 'mu_sigma':
+        return np.random.lognormal(params['mu'], params['sigma'])
+    else:  # mean_stdev
+        mu, sigma = calculate_lognormal_params(params['mean'], params['stdev'])
+        return np.random.lognormal(mu, sigma)
+
+def patient_generator(env):
+    """Generates patients with Poisson arrival times"""
+    while True:
+        # Weighted selection by admission rates
+        patient_type = random.choices(
+            list(ADMISSION_RATES_ASU.keys()),
+            weights=[1/rate for rate in ADMISSION_RATES_ASU.values()],
+            k=1
+        )[0]
+        
+        # Choose specific LOS type
+        los_type = random.choice(ADMISSION_TO_LOS[patient_type])
+        
+        # Generate LOS using BOTH parameter sets (you can choose which to use)
+        los_mu_sigma = lognormal_los('mu_sigma', **LOS_PARAMS[los_type])
+        los_mean_stdev = lognormal_los('mean_stdev', **PATIENT_TYPES[los_type])
+        
+        # Use average of both methods for more stable results
+        los = (los_mu_sigma + los_mean_stdev) / 2
+        
+        env.process(patient_stay(env, los))
+        interarrival = random.expovariate(1/ADMISSION_RATES_ASU[patient_type])
+        yield env.timeout(interarrival)
+
+def patient_stay(env, los):
+    """Manages patient stay in ASU"""
+    global current_occupancy
+    current_occupancy += 1
+    yield env.timeout(los)
+    current_occupancy -= 1
+
+def occupancy_tracker(env):
+    """Records daily occupancy"""
+    while True:
+        occupancy_history.append(current_occupancy)
+        yield env.timeout(1)
+
+# Simulation setup
+env = simpy.Environment()
+env.process(patient_generator(env))
+env.process(occupancy_tracker(env))
+env.run(until=SIMULATION_DAYS)
+
+# Remove data from the warm-up period
+occupancy_history = occupancy_history[WARM_UP_DAYS:]
+
+# Calculate PDF and CDF
+max_occ = max(occupancy_history)
+counts = np.bincount(occupancy_history, minlength=max_occ + 1)
+pdf = counts / len(occupancy_history)
+cdf = np.cumsum(pdf)
+
+# Calculate delay probabilities using P(N≥n) = 1 - P(N<n)
+bed_range = np.arange(0, 29)  # Beds from 0 to 28
+delay_probs = []
+
+for n in bed_range:
+    if n == 0:
+        delay_probs.append(1.0)  # Certain delay with no beds
+    else:
+        if n <= len(cdf):
+            delay_probs.append(1 - cdf[n-1])
+        else:
+            delay_probs.append(0.0)
+
+# Create plot matching reference image style
+plt.figure(figsize=(10, 6))
+
+# Main curve - using step function for exact match
+plt.step(bed_range, delay_probs, where="post", linewidth=2, color="black")
+
+# Formatting to match reference
+plt.ylim(0, 1.0)
+plt.yticks(np.arange(0, 1.1, 0.1), fontsize=10)
+plt.xticks(np.arange(0, 29, 2), fontsize=10)
+plt.grid(axis='both', linestyle='--', alpha=0.7)
+plt.ylabel("Probability of delay", fontsize=12)
+plt.xlabel("No. of acute beds available", fontsize=12)
+
+# Remove top and right spines
+plt.gca().spines['top'].set_visible(False)
+plt.gca().spines['right'].set_visible(False)
+
+plt.tight_layout()
+plt.show()
+
+# Print key statistics
+print(f"Simulation Results ({RUN_LENGTH_DAYS} days after warm-up):")
+print(f"Maximum observed occupancy: {max(occupancy_history)}")
+print(f"Average occupancy: {np.mean(occupancy_history):.2f} ± {np.std(occupancy_history):.2f}")
+print("\nKey delay probabilities:")
+for n in [10, 15, 20, 25, 28]:
+    print(f"{n} beds: {delay_probs[n]:.2%}")
