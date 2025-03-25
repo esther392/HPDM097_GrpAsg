@@ -198,6 +198,10 @@ env.run(until=8*365)  # 8 years total (3 warmup + 5 data collection)
 occupancy_data['asu_daily'] = occupancy_data['asu_daily'][3*365:]
 occupancy_data['ru_daily'] = occupancy_data['ru_daily'][3*365:]
 
+# The simulation runs for a total of 8 years & the first 3 years are warm-up period
+# This leaves 5 years of data for analysis
+RUN_LENGTH_DAYS = 5 * 365
+
 # Calculate statistics
 print(f"ASU Average Occupancy (5-year post-warmup): {sum(occupancy_data['asu_daily'])/len(occupancy_data['asu_daily']):.1f}")
 print(f"RU Average Occupancy (5-year post-warmup): {sum(occupancy_data['ru_daily'])/len(occupancy_data['ru_daily']):.1f}")
