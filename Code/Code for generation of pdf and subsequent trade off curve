@@ -5,6 +5,10 @@ from scipy.stats import lognorm
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Set seeds for random number generators
+random.seed(42)
+np.random.seed(42)
+
 # Initialize simulation environment
 env = simpy.Environment()
 
