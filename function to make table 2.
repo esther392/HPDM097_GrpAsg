@@ -1,0 +1,60 @@
+#This code should be run in a seperate cell
+# Ensure that this code is executed after the simulation code in the previous cell
+
+def calculate_delay_probs(occupancy_data, bed_list):
+    """Calculates delay probabilities for a given unit."""
+    max_occ = max(occupancy_data)
+    counts = np.bincount(occupancy_data, minlength=max_occ + 1)
+    pdf = counts / len(occupancy_data)
+    cdf = np.cumsum(pdf)
+    delay_probs = []
+
+    for n in bed_list:
+        if n == 0:
+            delay_probs.append(1.0)  # Certain delay with no beds
+        else:
+            if n <= len(cdf):
+                delay_probs.append(1 - cdf[n-1])
+            else:
+                delay_probs.append(0.0)
+
+    return delay_probs
+
+def create_delay_table(delay_probs, bed_list):
+    """Creates a table of delay probabilities and 1-in-N metrics.
+    Returns the table data as a list of lists.
+    """
+    table_data = []
+    for n, p_delay in zip(bed_list, delay_probs):
+        if p_delay > 0:
+            one_in_n = round(1 / p_delay)
+        else:
+            one_in_n = float('inf')  # Indicate very rare delays with infinity
+        table_data.append([n, p_delay, one_in_n])
+    return table_data
+
+def print_table(table_data, unit_name):
+    """Prints the delay table in a formatted way."""
+    print(f"\n--- {unit_name} Delay Probabilities ---")
+    print("| Number of Beds | P(Delay) | 1 in N Patients Delayed |")
+    print("|----------------|----------|-------------------------|")
+    for row in table_data:
+        beds, p_delay, one_in_n = row
+        if one_in_n == float('inf'):
+            one_in_n_str = "Never"
+        else:
+            one_in_n_str = f"1 in {one_in_n:.0f}"
+        print(f"| {beds:<14} | {p_delay:.4f} | {one_in_n_str:<23} |")
+
+# Define bed numbers you want in the table
+bed_list = [10, 11, 12, 13, 14, 15, 16]
+
+# Calculate and display ASU delay probabilities
+asu_delay_probs = calculate_delay_probs(occupancy_data['asu_daily'], bed_list)
+asu_table_data = create_delay_table(asu_delay_probs, bed_list)
+print_table(asu_table_data, "ASU")
+
+# Calculate and display RU delay probabilities
+ru_delay_probs = calculate_delay_probs(occupancy_data['ru_daily'], bed_list)
+ru_table_data = create_delay_table(ru_delay_probs, bed_list)
+print_table(ru_table_data, "RU")
