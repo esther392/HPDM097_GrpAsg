@@ -127,4 +127,4 @@ The model supports different **hospital policy simulations**:
 ### Contributors
 1. Neil Lenus (nl470@exeter.ac.uk)
 2. Emily Sims (es857@exeter.ac.uk)
-3. Tan Yi Siew (ut425@exeter.ac.uk)
+3. Tan Yi Siew (yt425@exeter.ac.uk)
